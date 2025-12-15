@@ -12,8 +12,8 @@ router.get("/", (req, res) => {
 });
 
 // Get ALL container names in Docker  
-router.get("/names", (req, res) => {
-  const names = req.app.locals.allContainers(); // ["spinnerr", "portainer", ...]
+router.get("/names", async (req, res) => {
+  const names = await req.app.locals.allContainers(); // ["spinnerr", "portainer", ...]
   res.json(names);
 });
 
@@ -99,10 +99,10 @@ router.post("/:name/stop", async (req, res) => {
 });
 
 // Get LIVE status of a container
-router.get("/:name/status", (req, res) => {
+router.get("/:name/status", async (req, res) => {
   const name = req.params.name;
 
-  const isRunning = req.app.locals.isContainerRunning(name); // function
+  const isRunning = await req.app.locals.isContainerRunning(name); // function
   const lastActivity = req.app.locals.lastActivity[name] || null; // just access property
 
   res.json({
