@@ -87,7 +87,6 @@ function log(message) {
 const DOCKER_PROXY_URL = process.env.DOCKER_PROXY_URL || null;
 const HAS_SOCKET = fs.existsSync("/var/run/docker.sock");
 let method;
-
 if(HAS_SOCKET){
   method = "socket";
   log(`Using SOCKET`);
@@ -95,7 +94,8 @@ if(HAS_SOCKET){
   method = "proxy";
   log(`Using PROXY`);
 } else if (HAS_SOCKET && DOCKER_PROXY_URL){
-  log(`Both methods defined, please choose between docker socket or docker proxy`)
+  method = "proxy";
+  log(`Both methods defined, defaulted to PROXY`);
 } else {
   log(`No socket or proxy found, please mount the docker socket or define a docker proxy`)
 }
@@ -104,18 +104,28 @@ if(HAS_SOCKET){
 //----------------------------------------------------------------
 // Check if container is running
 //----------------------------------------------------------------
-function isContainerRunning(name) {
+async function isContainerRunning(name) {
   if (HAS_SOCKET) {
-    try {
-      const output = execSync(`docker inspect -f '{{.State.Running}}' ${name}`).toString().trim();
-      return output === "true";
-    } catch {
-      return false;
-    }
+    return new Promise((resolve) => {
+      exec(`docker inspect -f '{{.State.Running}}' ${name}`, 
+        { timeout: 2000 },
+        (error, stdout, stderr) => {
+          if (error || stderr) {
+            resolve(false);
+          } else {
+            resolve(stdout.toString().trim() === "true");
+          }
+        }
+      );
+    });
   } else if (DOCKER_PROXY_URL) {
     try {
-      const res = execSync(`curl -s ${DOCKER_PROXY_URL.replace("tcp://", "http://")}/containers/${name}/json`).toString();
-      return JSON.parse(res).State.Running;
+      const res = await fetch(
+        `${DOCKER_PROXY_URL.replace("tcp://", "http://")}/containers/${name}/json`,
+        { signal: AbortSignal.timeout(3000) }
+      );
+      const data = await res.json();
+      return data.State.Running;
     } catch {
       return false;
     }
@@ -123,21 +133,31 @@ function isContainerRunning(name) {
   return false;
 }
 
+
 //----------------------------------------------------------------
 // Get all containers from Docker
 //----------------------------------------------------------------
-function allContainers() {
+async function allContainers() {
   if (HAS_SOCKET) {
-    try {
-      const output = execSync(`docker ps -a --format '{{.Names}}'`).toString().trim();
-      return output.split('\n');
-    } catch {
-      return [];
-    }
+    return new Promise((resolve) => {
+      exec(`docker ps -a --format '{{.Names}}'`,
+        { timeout: 3000 },
+        (error, stdout, stderr) => {
+          if (error || stderr) {
+            resolve([]);
+          } else {
+            resolve(stdout.toString().trim().split('\n').filter(Boolean));
+          }
+        }
+      );
+    });
   } else if (DOCKER_PROXY_URL) {
     try {
-      const res = execSync(`curl -s ${DOCKER_PROXY_URL.replace("tcp://", "http://")}/containers/json?all=1`).toString();
-      const containers = JSON.parse(res);
+      const res = await fetch(
+        `${DOCKER_PROXY_URL.replace("tcp://", "http://")}/containers/json?all=1`,
+        { signal: AbortSignal.timeout(3000) }
+      );
+      const containers = await res.json();
       return containers.map(c => c.Names[0].replace(/^\//, ''));
     } catch {
       return [];
@@ -145,6 +165,31 @@ function allContainers() {
   }
   return [];
 }
+
+
+//----------------------------------------------------------------
+// New function to check multiple containers' running status in parallel
+//----------------------------------------------------------------
+async function checkMultipleContainers(containerNames, maxConcurrent = 10) {
+  const results = {};
+  // Process in batches to avoid too many concurrent calls
+  for (let i = 0; i < containerNames.length; i += maxConcurrent) {
+    const batch = containerNames.slice(i, i + maxConcurrent);
+    const promises = batch.map(async (name) => {
+      try {
+        const isRunning = await isContainerRunning(name);
+        results[name] = isRunning;
+      } catch {
+        results[name] = false;
+      }
+    });
+    
+    await Promise.all(promises);
+  }
+  
+  return results;
+}
+
 
 //----------------------------------------------------------------
 // Determine container start time in order to prevent stopping earlier if container was started manually
@@ -194,6 +239,7 @@ function checkStartTime(name, idleTimeout){
   }
 }
 
+
 //----------------------------------------------------------------
 // Check if container activation is more than timeout ago
 //----------------------------------------------------------------
@@ -231,8 +277,8 @@ function isContainerInGroup(name, groups) {
 //----------------------------------------------------------------
 // Start container function
 //----------------------------------------------------------------
-function startContainer(name) {
-  if (!isContainerRunning(name)) {
+async function startContainer(name) {
+  if (!(await isContainerRunning(name))) {
     try {
       if (HAS_SOCKET){
         execSync(`docker start ${name}`, { stdio: "ignore" });
@@ -250,8 +296,8 @@ function startContainer(name) {
 //----------------------------------------------------------------
 // Stop container function
 //----------------------------------------------------------------
-function stopContainer(name) {
-  if (isContainerRunning(name)) {
+async function stopContainer(name) {
+  if (await isContainerRunning(name)) {
     try {
       log(`<${name}> stopping..`);
       if (HAS_SOCKET){
@@ -306,6 +352,7 @@ if (UI_PORT){
   });
 }
 
+
 //----------------------------------------------------------------
 // Main proxy middleware
 //----------------------------------------------------------------
@@ -327,7 +374,7 @@ app.use(async (req, res, next) => {
   );
 
   // If the container is running, redirect to it's webpage, else start the container
-  if (isContainerRunning(container.name)) {
+  if (await isContainerRunning(container.name)) {  // ← ADDED AWAIT
     return proxy.web(req, res, { target: container.url, secure: false, changeOrigin: false });
   } 
 
@@ -339,19 +386,27 @@ app.use(async (req, res, next) => {
         ? group.container
         : [group.container];
 
-      names.forEach(name => {
-        if (!isContainerRunning(name)) {
-          startContainer(name);
+      // Changed forEach to for...of to use await
+      for (const name of names) { 
+
+        // Check if this specific container in the group is active
+        const containerInGroup = containers.find(c => c.name === name);
+        if (!containerInGroup || !containerInGroup.active) {
+          log(`<${name}> in group <${group.name}> is not active, skipping`);
+          continue;
         }
-      });
+
+        if (!(await isContainerRunning(name))) {  
+          await startContainer(name);
+        }
+      }
 
       log(`<${container.name}> was accessed, starting group <${group.name}>`);
     } else {
       // Start single container normally
-      startContainer(container.name);
+      await startContainer(container.name); 
     }
   }
-
   
   // If the service endpoint is reachable, serve the webpage; else serve the waiting page until ready
   try {
@@ -376,7 +431,6 @@ app.use(async (req, res, next) => {
 // Tracking the webrequest timeout
 //----------------------------------------------------------------
 const lastLog = {}; // track last log time per container
-
 proxy.on('proxyRes', (proxyRes, req) => {
   const container = containers.find(c => c.host === req.hostname);
   if (!container) return;
@@ -394,59 +448,74 @@ proxy.on('proxyRes', (proxyRes, req) => {
 //----------------------------------------------------------------
 // Timeout handling
 //----------------------------------------------------------------
-setInterval(() => {
-  const now = Date.now();
-  // ─────────────────────────────────────────────
-  // INDIVIDUAL CONTAINER TIMEOUT (non-group)
-  // ─────────────────────────────────────────────
-  containers.forEach(c => {
-    if (c.idleTimeout
-    && !isContainerInGroup(c.name, groups)
-    && c.active && now - lastActivity[c.name] > (c.idleTimeout || 60) * 1000 
-    && isContainerRunning(c.name) 
-    && checkStartTime(c.name, c.idleTimeout)
-    && checkActivationTime(c.name, c.idleTimeout)) {
-      log(`<${c.name}> ${(c.idleTimeout || 60)} seconds timeout reached`);
-      stopContainer(c.name);
-      log(`<${c.name}> stopped successfully`);
-      logOnce = true;
+setInterval(async () => {
+  try {
+    const now = Date.now();
+    
+    // Batch check all containers at once
+    const containerStatus = await checkMultipleContainers(
+      containers.map(c => c.name)
+    );
+    
+    // ─────────────────────────────────────────────
+    // INDIVIDUAL CONTAINER TIMEOUT (non-group)
+    // ─────────────────────────────────────────────
+    for (const c of containers) {
+      if (!c.active || !c.idleTimeout || isContainerInGroup(c.name, groups)) {
+        continue;
+      }
+      
+      const isRunning = containerStatus[c.name];
+      const timeoutReached = now - lastActivity[c.name] > (c.idleTimeout || 60) * 1000;
+      
+      if (isRunning && timeoutReached && 
+          checkStartTime(c.name, c.idleTimeout) &&
+          checkActivationTime(c.name, c.idleTimeout)) {
+        
+        log(`<${c.name}> ${(c.idleTimeout || 60)} seconds timeout reached`);
+        await stopContainer(c.name);
+        log(`<${c.name}> stopped successfully`);
+        logOnce = true;
+      }
     }
-  });
-  // ─────────────────────────────────────────────
-  // GROUP TIMEOUT (stop ALL containers in group)
-  // ─────────────────────────────────────────────
-  groups.forEach(g => {
-    if (!g.active || !g.idleTimeout || !g.container) return;
+    
+    // ─────────────────────────────────────────────
+    // GROUP TIMEOUT
+    // ─────────────────────────────────────────────
+    for (const g of groups) {
+      if (!g.active || !g.idleTimeout || !g.container) continue;
 
-    const groupContainers = Array.isArray(g.container)
-      ? g.container
-      : [g.container];
+      const groupContainers = Array.isArray(g.container)
+        ? g.container
+        : [g.container];
 
-    // Check if ANY container in group exceeds timeout
-    const shouldStopGroup = groupContainers.some(name => {
-      return (
-        isContainerRunning(name) &&
-        now - lastActivity[name] > (g.idleTimeout || 60) * 1000 &&
-        checkStartTime(name, g.idleTimeout)
-      );
-    });
-
-    if (shouldStopGroup) {
-      //log(`Group <${g.name}> timeout reached (${g.idleTimeout}s). Stopping group.`);
-
-      // Stop ALL containers in the group
-      groupContainers.forEach(name => {
-
-      const container = containers.find(c => c.name === name);
-
-        if (isContainerRunning(name) && container.active) {
-          stopContainer(name);
-          log(`<${name}> stopped as part of group <${g.name}>`);
-        }
+      // Check if ANY container in group exceeds timeout
+      const shouldStopGroup = groupContainers.every(name => {
+        const isRunning = containerStatus[name];
+        const container = containers.find(c => c.name === name);
+        return (
+          isRunning &&
+          container &&
+          container.active &&
+          now - lastActivity[name] > (g.idleTimeout || 60) * 1000 &&
+          checkStartTime(name, g.idleTimeout)
+        );
       });
+
+      if (shouldStopGroup) {
+        for (const name of groupContainers) {
+          const container = containers.find(c => c.name === name);
+          if (containerStatus[name] && container && container.active) {
+            await stopContainer(name);
+            log(`<${name}> stopped as part of group <${g.name}>`);
+          }
+        }
+      }
     }
-  });
-}, 5000);
+  } catch (error) {
+    log(`Error in timeout interval: ${error.message}`);
+  }
+}, 10000);
 
 
 //----------------------------------------------------------------
@@ -491,7 +560,8 @@ setInterval(() => {
       }
     });
   });
-}, 30000);
+}, 59000);
+
 
 //----------------------------------------------------------------
 // Reload configuration function
@@ -516,13 +586,14 @@ function reloadConfig() {
   }
 }
 
+
 //----------------------------------------------------------------
 // Reload configuration if config.json has been changed
 //----------------------------------------------------------------
-
 fs.watchFile("/app/config/config.json", { interval: 500 }, () => {
   reloadConfig();
 });
+
 
 //----------------------------------------------------------------
 // Main app, starts the app listening on the defined port
