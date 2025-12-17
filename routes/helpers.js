@@ -13,7 +13,8 @@ function readConfig() {
       order: parsed.order || (parsed.containers ? parsed.containers.map(c => c.name) : []),
       groups: parsed.groups || [],
       groupOrder: parsed.groupOrder || (parsed.groups ? parsed.groups.map(g => g.name) : []),
-      schedules: parsed.schedules || []
+      schedules: parsed.schedules || [],
+      apiKeys: parsed.apiKeys || []
     };
   } catch (err) {
     console.error("Failed to read config:", err);
@@ -28,7 +29,8 @@ function saveConfig(config) {
     order: config.order || (config.containers ? config.containers.map(c => c.name) : []),
     groups: config.groups || [],
     groupOrder: config.groupOrder || (config.groups ? config.groups.map(g => g.name) : []),
-    schedules: config.schedules || []
+    schedules: config.schedules || [],
+    apiKeys: config.apiKeys || []
   };
 
   fs.writeFileSync(configPath, JSON.stringify(toSave, null, 2));

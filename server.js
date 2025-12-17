@@ -6,6 +6,7 @@ import fs from "fs";
 import containerRoutes from "./routes/containerRoutes.js"; 
 import groupRoutes from "./routes/groupRoutes.js";
 import scheduleRoutes from "./routes/scheduleRoutes.js";
+import https from "https";
 
 const app = express();
 const waitingPage = path.join("/app/public", "waiting.html");
@@ -20,7 +21,11 @@ if (!fs.existsSync(CONFIG_PATH)) {
   // create default config
   const defaultConfig = {
     containers: [],
-    groups: []
+    order: [],
+    groups: [],
+    groupOrder: [],
+    schedules: [],
+    apiKeys: {pve: {}}
   };
   fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(defaultConfig, null, 2));
@@ -33,13 +38,14 @@ if (!fs.existsSync(CONFIG_PATH)) {
 //----------------------------------------------------------------
 // Initialize variables
 //----------------------------------------------------------------
-const PORT = process.env.PORT || config.port
+const PORT = process.env.PORT || 10000;
 let containers = config.containers;
 let groups = config.groups;
 let schedules = config.schedules || [];
-
+let apiKeys = config.apiKeys || {};
 const lastActivity = {};
 containers.forEach(c => lastActivity[c.name] = Date.now());
+const stoppingContainers = new Set();
 
 
 //----------------------------------------------------------------
@@ -86,6 +92,7 @@ function log(message) {
 //----------------------------------------------------------------
 const DOCKER_PROXY_URL = process.env.DOCKER_PROXY_URL || null;
 const HAS_SOCKET = fs.existsSync("/var/run/docker.sock");
+
 let method;
 if(HAS_SOCKET){
   method = "socket";
@@ -100,11 +107,16 @@ if(HAS_SOCKET){
   log(`No socket or proxy found, please mount the docker socket or define a docker proxy`)
 }
 
+//----------------------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------------------
+// Docker Functions
+//----------------------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------
 // Check if container is running
 //----------------------------------------------------------------
-async function isContainerRunning(name) {
+async function isContainerRunningDocker(name) {
   if (HAS_SOCKET) {
     return new Promise((resolve) => {
       exec(`docker inspect -f '{{.State.Running}}' ${name}`, 
@@ -137,7 +149,7 @@ async function isContainerRunning(name) {
 //----------------------------------------------------------------
 // Get all containers from Docker
 //----------------------------------------------------------------
-async function allContainers() {
+async function allContainersDocker() {
   if (HAS_SOCKET) {
     return new Promise((resolve) => {
       exec(`docker ps -a --format '{{.Names}}'`,
@@ -195,7 +207,7 @@ async function checkMultipleContainers(containerNames, maxConcurrent = 10) {
 // Determine container start time in order to prevent stopping earlier if container was started manually
 //----------------------------------------------------------------
 let logOnce = true;
-function checkStartTime(name, idleTimeout){
+function checkStartTimeDocker(name, idleTimeout){
   
   const now = Date.now();
   let startTimeStr;
@@ -277,13 +289,31 @@ function isContainerInGroup(name, groups) {
 //----------------------------------------------------------------
 // Start container function
 //----------------------------------------------------------------
-async function startContainer(name) {
+async function startContainerDocker(name) {
   if (!(await isContainerRunning(name))) {
     try {
       if (HAS_SOCKET){
-        execSync(`docker start ${name}`, { stdio: "ignore" });
+        await new Promise((resolve, reject) => {
+          exec(`docker start ${name}`, 
+            { timeout: 30000 }, // 30 second timeout
+            (error, stdout, stderr) => {
+              if (error) {
+                reject(error);
+              } else {
+                resolve();
+              }});
+        });
       } else if (DOCKER_PROXY_URL){
-        execSync(`curl -s -X POST ${DOCKER_PROXY_URL.replace("tcp://", "http://")}/containers/${name}/start`);
+        await new Promise((resolve, reject) => {
+          exec(`curl -s -X POST ${DOCKER_PROXY_URL.replace("tcp://", "http://")}/containers/${name}/start`,
+            { timeout: 30000 },
+            (error, stdout, stderr) => {
+              if (error) {
+                reject(error);
+              } else {
+                resolve();
+              }});
+        });
       }
       log(`<${name}> started`);
     } catch (e) {
@@ -296,19 +326,441 @@ async function startContainer(name) {
 //----------------------------------------------------------------
 // Stop container function
 //----------------------------------------------------------------
-async function stopContainer(name) {
+async function stopContainerDocker(name) {
   if (await isContainerRunning(name)) {
     try {
       log(`<${name}> stopping..`);
       if (HAS_SOCKET){
-        execSync(`docker stop ${name}`, { stdio: "ignore" });
+        await new Promise((resolve, reject) => {
+          exec(`docker stop ${name}`,
+            { timeout: 30000 },
+            (error, stdout, stderr) => {
+              if (error) {
+                reject(error);
+              } else {
+                resolve();
+              }});
+        });
       } else if (DOCKER_PROXY_URL){
-        execSync(`curl -s -X POST ${DOCKER_PROXY_URL.replace("tcp://", "http://")}/containers/${name}/stop`);
+        await new Promise((resolve, reject) => {
+          exec(`curl -s -X POST ${DOCKER_PROXY_URL.replace("tcp://", "http://")}/containers/${name}/stop`,
+            { timeout: 30000 },
+            (error, stdout, stderr) => {
+              if (error) {
+                reject(error);
+              } else {
+                resolve();
+              }});
+        });
       }
     } catch (e) {
       log(`Failed to stop ${name}: ${e.message}`);
     }
   }
+}
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------------------
+// Proxmox LXC Functions
+//----------------------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------------------
+
+//----------------------------------------------------------------
+// Load Proxmox API keys from config
+//----------------------------------------------------------------
+let pveKeys = config.apiKeys?.pve || null;
+let pveHostname = pveKeys?.hostname || null;
+let pvePort = pveKeys?.port || null;
+let pveNode = pveKeys?.node || null;
+let pveUser = pveKeys?.user || null;
+let pveTokenId = pveKeys?.tokenId || null;
+let pveToken = pveKeys?.token || null;
+let pveAuthHeader = pveUser && pveTokenId && pveToken 
+  ? `PVEAPIToken=${pveUser}!${pveTokenId}=${pveToken}` 
+  : null;
+
+log(`PVE Config: ${pveAuthHeader ? "SET" : "NOT SET"}`);
+if (pveAuthHeader) {
+  log(`PVE: ${pveHostname}:${pvePort}, node: ${pveNode}`);
+}
+
+
+//----------------------------------------------------------------
+// Determine Proxmox LXC start time in order to prevent stopping earlier if container was started manually
+//----------------------------------------------------------------
+async function checkStartTimeLXC(fullName, idleTimeout) {
+  if (!pveAuthHeader) return false;
+  
+  const lastPart = fullName.split(':').pop();
+  const vmid = lastPart.split('@')[0];
+  if (!vmid || isNaN(vmid)) return false;
+
+  return new Promise((resolve) => {
+    const req = https.request({
+      hostname: pveHostname,
+      port: pvePort,
+      path: `/api2/json/nodes/${pveNode}/lxc/${vmid}/status/current`,
+      method: 'GET',
+      headers: { 'Authorization': pveAuthHeader },
+      rejectUnauthorized: false,
+      timeout: 3000
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          const uptime = json.data?.uptime || 0; // uptime in seconds
+          const startTime = Date.now() - (uptime * 1000);
+          resolve((Date.now() - startTime) > idleTimeout * 1000);
+          if (logOnce){
+            log(`LXC <${fullName}> started at ${new Date(startTime).toISOString()}, uptime: ${uptime} seconds`);
+          }
+          logOnce = false;
+        } catch {
+          resolve(false);
+        }
+      });
+    });
+    
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.end();
+  });
+}
+
+
+//----------------------------------------------------------------
+// Get all LXC containers from Proxmox
+//----------------------------------------------------------------
+async function allContainersLXC() {
+  if (!pveAuthHeader) return [];
+  
+  return new Promise((resolve) => {
+    const req = https.request({
+      hostname: pveHostname,
+      port: pvePort,
+      path: `/api2/json/nodes/${pveNode}/lxc`,
+      method: 'GET',
+      headers: { 'Authorization': pveAuthHeader },
+      rejectUnauthorized: false,
+      timeout: 5000
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          resolve(json.data.map(c => `${c.name}:${c.vmid}@${pveNode}`));
+        } catch {
+          resolve([]);
+        }
+      });
+    });
+    
+    req.on('error', () => resolve([]));
+    req.on('timeout', () => { req.destroy(); resolve([]); });
+    
+    req.end();
+  });
+}
+
+
+//----------------------------------------------------------------
+// Check if Proxmox LXC container is running
+//----------------------------------------------------------------
+async function isContainerRunningLXC(fullName) {
+  if (!pveAuthHeader) return false;
+  
+  // Parse: "ubuntu/100@proxmox" → vmid=100
+  // Or: "ubuntu-22.04/101@proxmox" → vmid=101
+  const parts = fullName.split(':');
+  if (parts.length !== 2) return false;
+  
+  const namePart = parts[0];  // "ubuntu" or "ubuntu-22.04"
+  const vmidNodePart = parts[1];  // "100@proxmox"
+  
+  const vmidNodeParts = vmidNodePart.split('@');
+  if (vmidNodeParts.length !== 2) return false;
+  
+  const vmid = vmidNodeParts[0];  // "100"
+  // const node = vmidNodeParts[1];  // "proxmox" (optional)
+  
+  if (!vmid || isNaN(parseInt(vmid))) return false;
+  
+  return new Promise((resolve) => {
+    const req = https.request({
+      hostname: pveHostname,
+      port: pvePort,
+      path: `/api2/json/nodes/${pveNode}/lxc/${vmid}/status/current`,
+      method: 'GET',
+      headers: { 'Authorization': pveAuthHeader },
+      rejectUnauthorized: false,
+      timeout: 3000
+    }, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const json = JSON.parse(data);
+          // Check both possible response formats
+          const isRunning = json.data?.status === 'running' || 
+                           json.data?.State?.Running === true ||
+                           json.status === 'running';
+          resolve(isRunning || false);
+        } catch {
+          resolve(false);
+        }
+      });
+    });
+    
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+    req.end();
+  });
+}
+
+
+//----------------------------------------------------------------
+// Start Proxmox LXC container
+//----------------------------------------------------------------
+async function startContainerLXC(fullName) {
+  if (!pveAuthHeader) return false;
+  
+  const parts = fullName.split(':');
+  if (parts.length !== 2) return false;
+  
+  const vmidNodePart = parts[1];
+  const vmidNodeParts = vmidNodePart.split('@');
+  if (vmidNodeParts.length !== 2) return false;
+  
+  const vmid = vmidNodeParts[0];
+  if (!vmid || isNaN(parseInt(vmid))) return false;
+
+  try {
+    // Send shutdown command
+    const startSuccess = await new Promise((resolve) => {
+      const req = https.request({
+        hostname: pveHostname,
+        port: pvePort,
+        path: `/api2/json/nodes/${pveNode}/lxc/${vmid}/status/start`,
+        method: 'POST',
+        headers: { 'Authorization': pveAuthHeader },
+        rejectUnauthorized: false,
+        timeout: 10000
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            if (res.statusCode === 200) {
+              log(`Start command sent for LXC ${fullName}. Response:`, json);
+              resolve(true);
+            } else {
+              console.error(`Failed to start LXC ${fullName}. API Error:`, json);
+              resolve(false);
+            }
+          } catch (parseError) {
+            console.error(`Failed to parse Proxmox API response for ${fullName}:`, parseError);
+            resolve(false);
+          }
+        });
+      });
+      
+      req.on('error', (err) => {
+        console.error(`Request error starting LXC ${fullName}:`, err.message);
+        resolve(false);
+      });
+      
+      req.on('timeout', () => {
+        console.error(`Request timeout starting LXC ${fullName}`);
+        req.destroy();
+        resolve(false);
+      });
+      
+      req.end();
+    });
+
+    if (!startSuccess) return false;
+
+    // Wait for container to start
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      if (await isContainerRunning(fullName)) {
+        log(`LXC ${fullName} started`);
+        return true;
+      }
+    }
+    
+    log(`LXC ${fullName} start timeout`);
+    return false;
+
+  } catch (error) {
+    console.error(`Error in startContainerLXC for ${fullName}:`, error);
+    return false;
+  }
+}
+
+
+//----------------------------------------------------------------
+// Stop Proxmox LXC container
+//----------------------------------------------------------------
+async function stopContainerLXC(fullName) {
+  if (!pveAuthHeader) return false;
+  
+  const parts = fullName.split(':');
+  if (parts.length !== 2) return false;
+  
+  const vmidNodePart = parts[1];
+  const vmidNodeParts = vmidNodePart.split('@');
+  if (vmidNodeParts.length !== 2) return false;
+  
+  const vmid = vmidNodeParts[0];
+  if (!vmid || isNaN(parseInt(vmid))) return false;
+
+  try {
+    // Send shutdown command
+    const shutdownSuccess = await new Promise((resolve) => {
+      const req = https.request({
+        hostname: pveHostname,
+        port: pvePort,
+        path: `/api2/json/nodes/${pveNode}/lxc/${vmid}/status/shutdown`,
+        method: 'POST',
+        headers: { 'Authorization': pveAuthHeader },
+        rejectUnauthorized: false,
+        timeout: 10000
+      }, (res) => {
+        let data = '';
+        res.on('data', chunk => data += chunk);
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            if (res.statusCode === 200) {
+              log(`Shutdown command sent for LXC ${fullName}. Response:`, json);
+              resolve(true);
+            } else {
+              console.error(`Failed to shutdown LXC ${fullName}. API Error:`, json);
+              resolve(false);
+            }
+          } catch (parseError) {
+            console.error(`Failed to parse Proxmox API response for ${fullName}:`, parseError);
+            resolve(false);
+          }
+        });
+      });
+      
+      req.on('error', (err) => {
+        console.error(`Request error stopping LXC ${fullName}:`, err.message);
+        resolve(false);
+      });
+      
+      req.on('timeout', () => {
+        console.error(`Request timeout stopping LXC ${fullName}`);
+        req.destroy();
+        resolve(false);
+      });
+      
+      req.end();
+    });
+
+    if (!shutdownSuccess) return false;
+
+    // Wait for container to stop
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      if (!(await isContainerRunning(fullName))) {
+        return true;
+      }
+    }
+    
+    log(`LXC ${fullName} shutdown timeout`);
+    return false;
+
+  } catch (error) {
+    console.error(`Error in stopContainerLXC for ${fullName}:`, error);
+    return false;
+  }
+}
+
+
+//----------------------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------------------
+// Combined Functions for Docker + Proxmox LXC
+//----------------------------------------------------------------------------------------------------------------------------------
+//----------------------------------------------------------------------------------------------------------------------------------
+
+//----------------------------------------------------------------
+// Determine container start time in order to prevent stopping earlier if container was started manually for both Docker and LXC
+//----------------------------------------------------------------
+async function checkStartTime(name, idleTimeout){
+  // Check if LXC container (has vmid in name)
+  if (name.includes(':') && name.includes('@')) {
+    const result = await checkStartTimeLXC(name, idleTimeout);
+    return result;
+  }
+  // Docker container
+  return checkStartTimeDocker(name, idleTimeout);
+}
+
+
+//----------------------------------------------------------------
+// Get all containers (Docker + Proxmox LXC)
+//----------------------------------------------------------------
+async function allContainers() {
+  const results = new Set();
+  
+  // Get Docker containers
+  const dockerContainers = await allContainersDocker();
+  dockerContainers.forEach(c => results.add(c));
+  
+  // Get LXC containers if configured
+  if (pveAuthHeader) {
+    const lxcContainers = await allContainersLXC();
+    lxcContainers.forEach(c => results.add(c));
+  }
+
+  return Array.from(results);
+}
+
+
+//----------------------------------------------------------------
+// Check if container is running (Docker + Proxmox LXC)
+//----------------------------------------------------------------
+async function isContainerRunning(name) {
+  // Check if LXC container (has vmid in name)
+  if (name.includes(':') && name.includes('@')) {
+    const result = await isContainerRunningLXC(name);
+    return result;
+  }
+  // Docker container
+  return isContainerRunningDocker(name);
+}
+
+
+//----------------------------------------------------------------
+// Start container (Docker + Proxmox LXC)
+//----------------------------------------------------------------
+async function startContainer(name) {
+  // Check if LXC container (has vmid in name)
+  if (name.includes(':') && name.includes('@')) {
+    return startContainerLXC(name);
+  }
+  // Docker container
+  return startContainerDocker(name);
+}
+
+
+//----------------------------------------------------------------
+// Stop container (Docker + Proxmox LXC)
+//----------------------------------------------------------------
+async function stopContainer(name) {
+  // Check if LXC container (has vmid in name)
+  if (name.includes(':') && name.includes('@')) {
+    return stopContainerLXC(name);
+  }
+  // Docker container
+  return stopContainerDocker(name);
 }
 
 
@@ -376,7 +828,9 @@ app.use(async (req, res, next) => {
   // If the container is running, redirect to it's webpage, else start the container
   if (await isContainerRunning(container.name)) {  // ← ADDED AWAIT
     return proxy.web(req, res, { target: container.url, secure: false, changeOrigin: false });
-  } 
+  }
+
+  res.sendFile(waitingPage);
 
   // Not running — must start it (or its group)
   if (container.active) {
@@ -407,10 +861,17 @@ app.use(async (req, res, next) => {
       await startContainer(container.name); 
     }
   }
-  
+});
+  /*
+  let r;
+
   // If the service endpoint is reachable, serve the webpage; else serve the waiting page until ready
   try {
-    const r = await fetch(`${container.url}/health`, { method: "GET" });
+    if (container.name.includes(':') && container.name.includes('@')) {
+      r = await fetch(`${container.url}/`, { method: "GET" });
+    } else {
+      r = await fetch(`${container.url}/health`, { method: "GET" });
+    }
     if (r.ok) {
       // healthy → proxy
       return proxy.web(req, res, { target: container.url, secure: false, changeOrigin: false });
@@ -424,7 +885,8 @@ app.use(async (req, res, next) => {
   }
 
   res.sendFile(waitingPage);
-});
+}); */
+      
 
 
 //----------------------------------------------------------------
@@ -470,11 +932,14 @@ setInterval(async () => {
       
       if (isRunning && timeoutReached && 
           checkStartTime(c.name, c.idleTimeout) &&
-          checkActivationTime(c.name, c.idleTimeout)) {
+          checkActivationTime(c.name, c.idleTimeout) &&
+          !stoppingContainers.has(c.name)) {
         
         log(`<${c.name}> ${(c.idleTimeout || 60)} seconds timeout reached`);
+        stoppingContainers.add(c.name);
         await stopContainer(c.name);
         log(`<${c.name}> stopped successfully`);
+        stoppingContainers.delete(c.name);
         logOnce = true;
       }
     }
@@ -505,8 +970,10 @@ setInterval(async () => {
       if (shouldStopGroup) {
         for (const name of groupContainers) {
           const container = containers.find(c => c.name === name);
-          if (containerStatus[name] && container && container.active) {
+          if (containerStatus[name] && container && container.active && !stoppingContainers.has(name)) {
+            stoppingContainers.add(c.name);
             await stopContainer(name);
+            stoppingContainers.delete(c.name);
             log(`<${name}> stopped as part of group <${g.name}>`);
           }
         }
@@ -552,10 +1019,11 @@ setInterval(() => {
         log(`<${s.target}> scheduled start executed`);
       }
 
-      if (stopMatch) {
+      if (stopMatch && !stoppingContainers.has(s.target)) {
+        stoppingContainers.add(s.target);
         if (s.targetType === "container") stopContainer(s.target);
         else target.container.forEach(n => stopContainer(n));
-
+        stoppingContainers.delete(s.target);
         log(`<${s.target}> scheduled stop executed`);
       }
     });
@@ -580,6 +1048,7 @@ function reloadConfig() {
     groups = newConfig.groups;
     containers = newConfig.containers;
     schedules = newConfig.schedules;
+    apiKeys = newConfig.apiKeys;
     log("Config reloaded, containers updated");
   } catch (e) {
     log(`Failed to reload config: ${e.message}`);

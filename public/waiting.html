@@ -67,13 +67,13 @@
   setInterval(async () => {
     try {
       const res = await fetch(window.location.href, { method: 'GET' });
-      if (res.ok) {
+      if (res.ok || res.status === 401) {
         window.location.reload();
       }
     } catch(e) {
       // still down, keep waiting
     }
-  }, 2000); // try every 1 second
+  }, 1000); // try every 1 second
 </script>
 </head>
 <body>
