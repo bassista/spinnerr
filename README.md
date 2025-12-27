@@ -12,6 +12,7 @@ Spinnerr is a lightweight Node.js-based service that automatically starts Docker
 * Configurable via web UI: Optional UI to add, edit, or remove container entries and set idle timeouts.
 * Container groups: containers can be grouped to be started and stopped together.
 * Lightweight and efficient: Minimal overhead, runs as a Docker container itself.
+* Proxmox LXC: Supports LXC containers using the Proxmox API
 * Scheduler for containers: Automate start/stop of containers or groups based on time and day.
   
 ## Installation
@@ -100,6 +101,7 @@ Although the tool supports basic HTTP reverse proxying, it’s generally better 
       "url": "http://flame:5005", <----- web access of the container in the docker network
       "idleTimeout": 180000,  <-------- timeout after no webrequests have been received, 0 will disable stopping the container after timeout
       "host": "flame.mydomain.com" <------- domain used to access the service
+      rest of the configuration...
     }
   ...
 }
@@ -113,9 +115,8 @@ Containers added in Spinnerr can be grouped up in order to be stopped and starte
 
 If you need to create a group consiting of a main web application + database container or other reference container which doesn't require web access, you can set a dummy value for the reference container's internal and external host - this way the reference containers will not be started and stopped based on web requests, only as part of the group of which they are part of.
 
-<img width="1710" height="747" alt="image" src="https://github.com/user-attachments/assets/e45a7101-4364-4fb8-82c0-28f1c73e2883" />
+<img width="529" height="706" alt="image" src="https://github.com/user-attachments/assets/c7a690bb-d587-453f-b180-097d24afefaf" />
 
-<img width="1709" height="758" alt="image" src="https://github.com/user-attachments/assets/d6082613-9922-460e-a0fd-8370c7ed7532" />
 
 ## Scheduler
 
@@ -127,26 +128,28 @@ Do note that:
 * In order to prevent this behaviour, you can set the timeout of the container/group to 0
 * You can edit, disable or delete any of the created schedules
 
-<img width="1710" height="772" alt="image" src="https://github.com/user-attachments/assets/396e9acf-4413-49af-862b-4ff3bd90c2ca" />
+<img width="507" height="903" alt="image" src="https://github.com/user-attachments/assets/1071afcb-74dd-4bdf-829e-f2580789c4cc" />
+
+## Proxmox LXC
+
+You can manage Proxmox LXC containers directly from the UI, allowing you to start and stop LXCs alongside Docker containers and groups.
+
+* The Proxmox node and API credentials must be correctly configured
+* Only LXC containers are supported (QEMU/VMs are not)
+* Permissions on the Proxmox API token must allow LXC power management
+
+You can configure the Proxmox API by accessing the Key icon in the navbar.
+I recommend creating a new user and granting it the minimal roles required - VM.Audit and VM.PowerMgmt, then create a new API token in Proxmox for this user.
+
+<img width="517" height="1059" alt="image" src="https://github.com/user-attachments/assets/c429a765-7388-491a-b3ae-258c70bc5938" />
 
 ## Web UI
 
 ### Dashboard
 
-<img width="1710" height="685" alt="image" src="https://github.com/user-attachments/assets/42f5b3bf-00aa-4266-9880-72b293c21643" />
+<img width="2559" height="1119" alt="image" src="https://github.com/user-attachments/assets/0064e99f-83cf-435d-8d29-07117144338c" />
 
-Dark mode:
-
-<img width="1710" height="693" alt="image" src="https://github.com/user-attachments/assets/663bb04f-3a09-4c01-a099-328d56a32768" />
-
-
-### Adding a container
-
-<img width="1710" height="802" alt="image" src="https://github.com/user-attachments/assets/019486c1-4438-431f-8cc5-2e47b9223250" />
-
-### Editing existing configuration
-
-<img width="1710" height="864" alt="image" src="https://github.com/user-attachments/assets/7497f732-fd31-40d7-b164-d91524c4af5c" />
+<img width="2554" height="1215" alt="image" src="https://github.com/user-attachments/assets/a4179771-85a4-4cd6-a619-74f795ad9c36" />
 
 
 ## Variables
