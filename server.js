@@ -534,8 +534,11 @@ app.use(async (req, res, next) => {
 
   // If container is running, redirect request
   if (await isContainerRunning(container.name)) {
+    log(`<${container.name}> is running, redirecting to container`);
     const redirectUrl = `https://${container.path}.${container.host}`;
-    return res.redirect(redirectUrl);
+    const waitingPageContent = fs.readFileSync(WAITING_PAGE, 'utf8')
+                                 .replace('{{REDIRECT_URL}}', redirectUrl);
+    res.type('text/html').send(waitingPageContent);
   }
 
   log(`<${container.name}> is not running, sending waiting page`);

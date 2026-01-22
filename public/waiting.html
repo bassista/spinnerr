@@ -64,12 +64,14 @@
 </style>
 
 <script>
+  const REDIRECT_URL = '{{REDIRECT_URL}}';
+  
   setInterval(async () => {
     try {
       const res = await fetch(window.location.href, { method: 'GET' });
       if (res.ok || res.status === 401 || res.status === 404) {
-        console.log(`${res.status} - Server is back up, reloading...`);
-        window.location.reload();
+        console.log(`${res.status} - Server is back up, redirecting to ${REDIRECT_URL}`);
+        window.location.href = REDIRECT_URL;
       } else {
          console.log(`Error fetching server status: ${res.status} - called ${window.location.href}`);
       }
