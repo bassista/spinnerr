@@ -442,7 +442,8 @@ function findContainerByRequest(req, preferHeader = false) {
       return container;
     }
   }
-  
+  log(`No container found for hostname: ${hostname}, path: ${req.path} - preferHeader: ${preferHeader}`);
+
   return null;
 }
 
