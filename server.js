@@ -510,6 +510,27 @@ app.locals.stopContainer = stopContainer;
 app.locals.isContainerRunning = isContainerRunning;
 app.locals.lastActivity = lastActivity;
 
+// Check if container is ready
+app.get("/api/containers/:name/ready", async (req, res) => {
+  const container = containers.find(c => c.name === req.params.name);
+  if (!container) return res.status(404).json({ ready: false });
+  
+  if (!(await isContainerRunning(container.name))) {
+    return res.json({ ready: false });
+  }
+  
+  // Verify container is actually responding with 200
+  try {
+    const response = await fetch(`${container.url}/`, { 
+      method: 'GET',
+      timeout: 5000
+    });
+    res.json({ ready: response.status === 200 });
+  } catch (e) {
+    res.json({ ready: false });
+  }
+});
+
 //----------------------------------------------------------------
 // Main proxy middleware
 //----------------------------------------------------------------
@@ -532,19 +553,22 @@ app.use(async (req, res, next) => {
       : g.container === container.name)
   );
 
+  const redirectUrl = `https://${container.path}.${container.host}`;
+  const waitingPageContent = fs.readFileSync(WAITING_PAGE, 'utf8')
+                               .replace('{{REDIRECT_URL}}', redirectUrl)
+                               .replace('{{CONTAINER_NAME}}', container.name);
+
   // If container is running, redirect request
   if (await isContainerRunning(container.name)) {
-    log(`<${container.name}> is running, redirecting to container`);
-    const redirectUrl = `https://${container.path}.${container.host}`;
-    const waitingPageContent = fs.readFileSync(WAITING_PAGE, 'utf8')
-                                 .replace('{{REDIRECT_URL}}', redirectUrl);
+    log(`<${container.name}> is running, redirecting to container at ${redirectUrl}`);
+
     res.type('text/html').send(waitingPageContent);
     return;    
   }
 
   log(`<${container.name}> is not running, sending waiting page`);
   // Send waiting page and start container
-  res.sendFile(WAITING_PAGE);
+  res.type('text/html').send(waitingPageContent);
 
   if (container.active) {
     if (await isContainerRunning(container.name) || recentlyStarted.has(container.name)) return;

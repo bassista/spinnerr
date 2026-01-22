@@ -52,6 +52,13 @@
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
   }
+
+  .error {
+    color: #d32f2f;
+    font-weight: bold;
+    margin-top: 16px;
+  }
+
   @media (prefers-color-scheme: dark) {
     body {
       background: #111;
@@ -65,21 +72,40 @@
 
 <script>
   const REDIRECT_URL = '{{REDIRECT_URL}}';
+  const CONTAINER_NAME = '{{CONTAINER_NAME}}';
+  const MAX_WAIT_TIME = 5 * 60 * 1000; // 5 minutes
+  const CHECK_INTERVAL = 2000; // Check every 2 seconds
+  
+  const startTime = Date.now();
+  const errorElement = document.createElement('div');
+  errorElement.className = 'error';
   
   setInterval(async () => {
+    const elapsed = Date.now() - startTime;
+    
+    // Check if max wait time exceeded
+    if (elapsed > MAX_WAIT_TIME) {
+      errorElement.textContent = 'Container failed to start after 5 minutes. Please try again.';
+      document.body.appendChild(errorElement);
+      return;
+    }
+    
     try {
-      const res = await fetch(window.location.href, { method: 'GET' });
-      if (res.ok || res.status === 401 || res.status === 404) {
-        console.log(`${res.status} - Server is back up, redirecting to ${REDIRECT_URL}`);
-        window.location.href = 'https://anchor.lan.asga.uk';
+      const res = await fetch(`/api/containers/${CONTAINER_NAME}/ready`);
+      const data = await res.json();
+      
+      if (data.ready) {
+        console.log('Container is ready, redirecting to ' + REDIRECT_URL);
+        window.location.href = REDIRECT_URL;
       } else {
-         console.log(`Error fetching server status: ${res.status} - called ${window.location.href}`);
+        const minutes = Math.floor(elapsed / 60000);
+        const seconds = Math.floor((elapsed % 60000) / 1000);
+        console.log(`Container not ready yet (${minutes}m ${seconds}s)...`);
       }
     } catch(e) {  
-      // still down, keep waiting
-      console.log(`Fetch error: ${e.message} - still waiting... - called ${window.location.href}`);
+      console.log(`Check error: ${e.message}`);
     }
-  }, 1000); // try every 1 second
+  }, CHECK_INTERVAL);
 </script>
 </head>
 <body>
