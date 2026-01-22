@@ -422,6 +422,31 @@ function isContainerInGroup(name, groups) {
 }
 
 //----------------------------------------------------------------
+// Container Lookup
+//----------------------------------------------------------------
+function findContainerByRequest(req, preferHeader = false) {
+  const hostname = preferHeader ? req.headers.host : (req.hostname || req.headers.host);
+  
+  // First try to find by hostname
+  let container = containers.find(c => c.host === hostname);
+  if (container) return container;
+  
+  // If not found, try to find by path
+  const pathSegments = req.path?.split('/').filter(Boolean);
+  if (pathSegments && pathSegments.length > 0) {
+    const firstPathSegment = pathSegments[0];
+    container = containers.find(c => c.path === firstPathSegment);
+    if (container) {
+      log(`<${container.name}> accessed via path prefix /${firstPathSegment}`);
+
+      return container;
+    }
+  }
+  
+  return null;
+}
+
+//----------------------------------------------------------------
 // Create proxy server
 //----------------------------------------------------------------
 const proxy = httpProxy.createProxyServer({
@@ -437,7 +462,7 @@ proxy.on("proxyReq", (proxyReq, req) => {
 });
 
 proxy.on("error", (err, req, res) => {
-  const container = containers.find(c => c.host === req.hostname);
+  const container = findContainerByRequest(req);
   
   if (container) {
     const startedAt = recentlyStarted.get(container.name);
@@ -454,7 +479,7 @@ proxy.on("error", (err, req, res) => {
 });
 
 proxy.on('proxyRes', (proxyRes, req) => {
-  const container = containers.find(c => c.host === req.hostname);
+  const container = findContainerByRequest(req);
   if (!container) return;
 
   lastActivity[container.name] = Date.now();
@@ -486,7 +511,7 @@ app.locals.lastActivity = lastActivity;
 // Main proxy middleware
 //----------------------------------------------------------------
 app.use(async (req, res, next) => {
-  const container = containers.find(c => c.host === req.hostname);
+  const container = findContainerByRequest(req);
   if (!container) return res.status(404).send("Container not found");
 
   lastActivity[container.name] = Date.now();
@@ -691,7 +716,7 @@ const server = app.listen(PORT, () => {
 });
 
 server.on("upgrade", (req, socket, head) => {
-  const container = containers.find(c => c.host === req.headers.host);
+  const container = findContainerByRequest(req, true);
   if (!container) return socket.destroy();
   
   proxy.ws(req, socket, head, { 
