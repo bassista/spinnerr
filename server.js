@@ -539,6 +539,7 @@ app.use(async (req, res, next) => {
     const waitingPageContent = fs.readFileSync(WAITING_PAGE, 'utf8')
                                  .replace('{{REDIRECT_URL}}', redirectUrl);
     res.type('text/html').send(waitingPageContent);
+    return;    
   }
 
   log(`<${container.name}> is not running, sending waiting page`);
