@@ -463,6 +463,7 @@ proxy.on("proxyReq", (proxyReq, req) => {
 });
 
 proxy.on("error", (err, req, res) => {
+  log(`Proxy error: ${err.message}`);
   const container = findContainerByRequest(req);
   
   if (container) {
@@ -480,6 +481,7 @@ proxy.on("error", (err, req, res) => {
 });
 
 proxy.on('proxyRes', (proxyRes, req) => {
+  log(`<${findContainerByRequest(req)?.name}> proxy response: ${proxyRes.statusCode}`);
   const container = findContainerByRequest(req);
   if (!container) return;
 
@@ -513,8 +515,12 @@ app.locals.lastActivity = lastActivity;
 //----------------------------------------------------------------
 app.use(async (req, res, next) => {
   const container = findContainerByRequest(req);
-  if (!container) return res.status(404).send("Container not found");
+  if (!container) {
+    log(`No container matched for request: ${req.hostname || req.headers.host}${req.path}`);
+    return res.status(404).send("Container not found");
+  }
 
+  log(`<${container.name}> accessed`);
   lastActivity[container.name] = Date.now();
 
   // Find active group containing this container
@@ -532,6 +538,7 @@ app.use(async (req, res, next) => {
     return res.redirect(redirectUrl);
   }
 
+  log(`<${container.name}> is not running, sending waiting page`);
   // Send waiting page and start container
   res.sendFile(WAITING_PAGE);
 
@@ -715,6 +722,7 @@ const server = app.listen(PORT, () => {
 
 server.on("upgrade", (req, socket, head) => {
   const container = findContainerByRequest(req, true);
+  log(`<${container?.name || 'unknown'}> websocket upgrade request`);
   if (!container) return socket.destroy();
   
   proxy.ws(req, socket, head, { 

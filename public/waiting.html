@@ -70,9 +70,12 @@
       if (res.ok || res.status === 401 || res.status === 404) {
         console.log(`${res.status} - Server is back up, reloading...`);
         window.location.reload();
+      } else {
+         console.log(`Error fetching server status: ${res.status} - called ${window.location.href}`);
       }
-    } catch(e) {
+    } catch(e) {  
       // still down, keep waiting
+      console.log(`Fetch error: ${e.message} - still waiting... - called ${window.location.href}`);
     }
   }, 1000); // try every 1 second
 </script>
