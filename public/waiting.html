@@ -71,7 +71,7 @@
       const res = await fetch(window.location.href, { method: 'GET' });
       if (res.ok || res.status === 401 || res.status === 404) {
         console.log(`${res.status} - Server is back up, redirecting to ${REDIRECT_URL}`);
-        window.location.href = REDIRECT_URL;
+        window.location.href = 'https://anchor.lan.asga.uk';
       } else {
          console.log(`Error fetching server status: ${res.status} - called ${window.location.href}`);
       }
