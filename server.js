@@ -526,13 +526,10 @@ app.use(async (req, res, next) => {
       : g.container === container.name)
   );
 
-  // If container is running, proxy request
+  // If container is running, redirect request
   if (await isContainerRunning(container.name)) {
-    return proxy.web(req, res, { 
-      target: container.url, 
-      secure: false, 
-      changeOrigin: false 
-    });
+    const redirectUrl = `https://${container.path}.${container.host}`;
+    return res.redirect(redirectUrl);
   }
 
   // Send waiting page and start container
