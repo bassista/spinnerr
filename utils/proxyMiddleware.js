@@ -18,71 +18,93 @@ function log(message) {
 export function createProxyMiddleware(containers, groups, lastActivity, recentlyStarted, cachedWaitingPageContent, isContainerRunning, startContainer) {
   return async (req, res, next) => {
     const { findContainerByRequest } = await import('./requestHandler.js');
-    
+    const { pathNameFrom } = await import('./requestHandler.js');
+ 
+    let group
     const container = findContainerByRequest(req, containers);
+    if (!container) {
+        const pathName = pathNameFrom(req);
+        if (pathName) {
+            // Find active group with given name
+            group = groups.find(g => g.active && g.name === pathName);
+
+            if (group && group.container) {
+                log(`Group <${group.name}> found`);
+                const containerNames = Array.isArray(group.container) ? group.container : [group.container];
+                
+                // Find first active container with host and path configured
+                for (const name of containerNames) {
+                    const c = containers.find(c => c.name === name);
+                    if (c?.active && c?.host && c?.path) {
+                        container = c;
+                        log(`Selected container <${c.name}> from group <${group.name}>`);
+                        break;
+                    }
+                }
+                
+                if (!container) {
+                    log(`No valid container found in group <${group.name}>`);
+                }
+            }    
+        }
+    }
+
     if (!container) {
       log(`No container matched for request: ${req.hostname || req.headers.host}${req.path}`);
       return res.status(404).send("Container not found");
     }
-
-    log(`<${container.name}> accessed`);
-    lastActivity[container.name] = Date.now();
-
-    // Find active group containing this container
-    const group = groups.find(g =>
-      g.active &&
-      g.container &&
-      (Array.isArray(g.container)
-        ? g.container.includes(container.name)
-        : g.container === container.name)
-    );
 
     if (!container.path || !container.host) {
         log(`<${container.name}> missing path or host configuration`);
         return res.status(500).send("Container misconfigured");
     }
 
-    const redirectUrl = `https://${container.path}.${container.host}`;
+    if (container.active === false) 
+        return res.status(403).send("Container is disabled");
+
+    log(`<${container.name}> accessed`);
+    lastActivity[container.name] = Date.now();
+
+    let redirectUrl = `https://${container.path}.${container.host}`;
     const waitingPageContent = cachedWaitingPageContent
                                  .replace('{{REDIRECT_URL}}', redirectUrl)
                                  .replace('{{CONTAINER_NAME}}', container.name);
 
+    res.type('text/html').send(waitingPageContent);
+                                 
+    if (group) {
+        await startContainersInGroup(group, containers, isContainerRunning, startContainer);
+        return;
+    }
+
     // If container is running, send waiting page
     if (await isContainerRunning(container.name)) {
       log(`<${container.name}> is running, send waiting page for container at ${redirectUrl}`);
-      res.type('text/html').send(waitingPageContent);
       return;    
     }
-
-    if (container.active === false) 
-        return res.status(403).send("Container is disabled");
-
-    log(`<${container.name}> is not running, sending waiting page`);
-    res.type('text/html').send(waitingPageContent);
 
     if (recentlyStarted.has(container.name)) {
       log(`<${container.name}> was started recently, not starting again`);
       return;
     }
 
-    const timeoutId = setTimeout(() => recentlyStarted.delete(container.name), 30000);
+    let timeoutId = setTimeout(() => recentlyStarted.delete(container.name), 30000);
     recentlyStarted.set(container.name, { startedAt: Date.now(), timeoutId });
-
-    //TODO rivedere la logica del gruppo, non voglio che venga usato sempre, ma solo se viene chiamato il gruppo e poi redirect ad un container di default nel gruppo
-    if (group) {
-        const names = Array.isArray(group.container) ? group.container : [group.container];
-        log(`starting group <${group.name}>`);      
-        for (const name of names) {
-          const containerInGroup = containers.find(c => c.name === name);
-          if (!containerInGroup?.active) {
-               log(`<${name}> in group <${group.name}> is not active, skipping`);
-               continue;
-          }
-          if (!(await isContainerRunning(name))) 
-              await startContainer(name);
-        }
-    } else {
-        await startContainer(container.name);
-    }
+    log(`<${container.name}> is not running, starting it now`);
+    await startContainer(container.name);
   };
+}
+
+async function startContainersInGroup(group, containers, isContainerRunning, startContainer) {
+    const names = Array.isArray(group.container) ? group.container : [group.container];
+    log(`starting group <${group.name}>`);
+    for (const name of names) {
+        const containerInGroup = containers.find(c => c.name === name);
+        if (!containerInGroup?.active) {
+            log(`<${name}> in group <${group.name}> is not active, skipping`);
+            continue;
+        }
+        if (!(await isContainerRunning(name)))
+            await startContainer(name);
+    }
 }

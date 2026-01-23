@@ -20,7 +20,10 @@ function log(message) {
 // Web UI Server Setup
 //----------------------------------------------------------------
 export function setupUIServer(UI_PORT, isContainerRunning, startContainer, stopContainer, lastActivity, allContainers) {
-  if (!UI_PORT) return;
+  if (!UI_PORT) {
+    log("WebUI disabled (UI_PORT not set)");    
+    return;
+  }
 
   const ui = express();
   ui.use(express.json());

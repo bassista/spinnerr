@@ -20,19 +20,27 @@ export function findContainerByRequest(req, containers, preferHeader = false) {
   
   // First try to find by hostname
   let container = containers.find(c => c.host === hostname);
-  if (container) return container;
+  if (container) 
+      return container;
   
   // If not found, try to find by path
-  let pathSegments = req.path?.split('/').filter(Boolean);
-  if (pathSegments && pathSegments.length > 0) {
-    let firstPathSegment = pathSegments[0];
-    container = containers.find(c => c.path === firstPathSegment);
-    if (container) {
-      log(`<${container.name}> accessed via path prefix /${firstPathSegment}`);
-      return container;
-    }
+  let firstPathSegment = pathNameFrom(req);
+  if (firstPathSegment) {
+      container = containers.find(c => c.path === firstPathSegment);
+      if (container) {
+          log(`<${container.name}> accessed via path prefix /${firstPathSegment}`);
+          return container;
+      }
   }
-  log(`No container found for hostname: ${hostname}, path: ${req.path} - preferHeader: ${preferHeader}`);
 
+  log(`No container found for hostname: ${hostname}, path: ${req.path} - preferHeader: ${preferHeader}`);
+  return null;
+}
+
+export function pathNameFrom(req) {
+  let pathSegments = req.path?.split('/').filter(Boolean);
+
+  if (pathSegments && pathSegments.length > 0) 
+      return pathSegments[0];
   return null;
 }
