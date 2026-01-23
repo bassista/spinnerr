@@ -4,6 +4,8 @@
     
 Spinnerr is a lightweight Node.js-based service that automatically starts Docker containers when accessed through a defined web route either individually or as part of a group.
 
+Kudos to drgshub @https://github.com/drgshub/spinnerr for the original project and idea.
+
 ## Features
 
 * Automatic container management: Containers start on demand when a user accesses their web route.
