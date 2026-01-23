@@ -123,8 +123,6 @@ You can schedule containers and groups to start and stop based on time and weekd
 
 Do note that:
 * The container/group needs to be active in order for the scheduler to work
-* The timeout of the container/group overides the schedule, so if the idle timeout should stop the container before reaching the scheduled stop, it will
-* In order to prevent this behaviour, you can set the timeout of the container/group to 0
 * You can edit, disable or delete any of the created schedules
 
 <img width="507" height="903" alt="image" src="https://github.com/user-attachments/assets/1071afcb-74dd-4bdf-829e-f2580789c4cc" />

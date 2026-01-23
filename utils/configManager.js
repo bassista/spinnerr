@@ -85,3 +85,41 @@ export function cleanupRemovedContainers(newContainers, { lastActivity }) {
     }
   }
 }
+
+//----------------------------------------------------------------
+// Read configuration
+//----------------------------------------------------------------
+export function readConfig() {
+  try {
+    const raw = fs.readFileSync(CONFIG_PATH, "utf-8");
+    const parsed = JSON.parse(raw);
+    return { 
+      containers: parsed.containers || [],
+      order: parsed.order || (parsed.containers ? parsed.containers.map(c => c.name) : []),
+      groups: parsed.groups || [],
+      groupOrder: parsed.groupOrder || (parsed.groups ? parsed.groups.map(g => g.name) : []),
+      schedules: parsed.schedules || [],
+      apiKeys: parsed.apiKeys || []
+    };
+  } catch (err) {
+    log(`Failed to read config: ${err.message}`);
+    return { containers: [], order: [], groups: [], groupOrder: [], schedules: [], apiKeys: [] };
+  }
+}
+
+//----------------------------------------------------------------
+// Save configuration
+//----------------------------------------------------------------
+export function saveConfig(config) {
+  const toSave = {
+    containers: config.containers || [],
+    order: config.order || (config.containers ? config.containers.map(c => c.name) : []),
+    groups: config.groups || [],
+    groupOrder: config.groupOrder || (config.groups ? config.groups.map(g => g.name) : []),
+    schedules: config.schedules || [],
+    apiKeys: config.apiKeys || []
+  };
+
+  fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(toSave, null, 2));
+  fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
+}

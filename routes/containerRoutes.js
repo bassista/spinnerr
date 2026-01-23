@@ -1,5 +1,5 @@
 import express from "express";
-import { readConfig, saveConfig } from "./helpers.js";
+import { readConfig, saveConfig } from "../utils/configManager.js";
 
 const router = express.Router();
 
