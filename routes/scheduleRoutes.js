@@ -33,7 +33,7 @@ router.put("/:id", (req, res) => {
   const id = req.params.id;
   const config = readConfig();
 
-  const index = config.schedules.findIndex(s => s.id == id);
+  const index = config.schedules.findIndex(s => s.id === id);
   if (index === -1) return res.status(404).json({ error: "Not found" });
 
   config.schedules[index] = { ...config.schedules[index], ...req.body };
@@ -47,7 +47,7 @@ router.delete("/:id", (req, res) => {
   const id = req.params.id;
   const config = readConfig();
 
-  config.schedules = config.schedules.filter(s => s.id != id);
+  config.schedules = config.schedules.filter(s => s.id !== id);
   saveConfig(config);
 
   res.json({ success: true });

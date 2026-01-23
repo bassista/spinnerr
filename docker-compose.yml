@@ -3,7 +3,7 @@
 services:
   spinnerr:
     build: .
-    image: ghcr.io/drgshub/spinnerr:latest
+    image: bassista/spinnerr:latest
     container_name: spinnerr
     ports:
       - "10000:10000"
@@ -29,7 +29,7 @@ networks:
 services:
   spinnerr:
     build: .
-    image: ghcr.io/drgshub/spinnerr:latest
+    image: bassista/spinnerr:latest
     container_name: spinnerr
     ports:
       - "10000:10000"
@@ -53,7 +53,7 @@ networks:
 services:
   spinnerr:
     build: .
-    image: ghcr.io/drgshub/spinnerr:latest
+    image: bassista/spinnerr:latest
     container_name: spinnerr
     ports:
       - "10000:10000"

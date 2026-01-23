@@ -2,17 +2,14 @@
   <img width="300" height="300" alt="logo" src="https://github.com/user-attachments/assets/b648eb5d-c621-42ef-8289-382f0db171a0" />
 </p>
     
-Spinnerr is a lightweight Node.js-based service that automatically starts Docker containers when accessed through a defined web route and stops them after a configurable idle timeout or on a set schedule, either individually or as part of a group.
+Spinnerr is a lightweight Node.js-based service that automatically starts Docker containers when accessed through a defined web route either individually or as part of a group.
 
 ## Features
 
 * Automatic container management: Containers start on demand when a user accesses their web route.
-* Idle timeout: Containers automatically stop after a specified period of inactivity.
-* Reverse proxy compatible: Integrates with Nginx; routes are defined via container hostnames and ports.
-* Configurable via web UI: Optional UI to add, edit, or remove container entries and set idle timeouts.
+* Configurable via web UI: Optional UI to add, edit, or remove container entries 
 * Container groups: containers can be grouped to be started and stopped together.
 * Lightweight and efficient: Minimal overhead, runs as a Docker container itself.
-* Proxmox LXC: Supports LXC containers using the Proxmox API
 * Scheduler for containers: Automate start/stop of containers or groups based on time and day.
   
 ## Installation
@@ -21,7 +18,7 @@ The package can be pulled directly from GitHub with Docker pull or Docker Compos
 
 ##### Pull the repository
 ```
-docker pull ghcr.io/drgshub/spinnerr:latest
+docker pull bassista/spinnerr:latest
 ```
 ### Docker run
 ```
@@ -36,7 +33,7 @@ docker run -d \
   -e UI_PORT=11000 \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   -v /path/to/spinnerr/config:/app/config \
-  ghcr.io/drgshub/spinnerr:latest
+  bassista/spinnerr:latest
 ```
 ### Docker Compose
 ```
@@ -44,7 +41,7 @@ version: "3.9"
 
 services:
   spinnerr:
-    image: ghcr.io/drgshub/spinnerr:latest
+    image: bassista/spinnerr:latest
     container_name: spinnerr
     ports:
       - "10000:10000"
@@ -63,7 +60,7 @@ networks:
   spinnerr:
     external: true
 ```
-All example configurations with Docker Compose can be found in the [docker-compose.yml file](https://github.com/drgshub/spinnerr/blob/main/docker-compose.yml)
+
 
 ## Usage
 
@@ -130,18 +127,6 @@ Do note that:
 
 <img width="507" height="903" alt="image" src="https://github.com/user-attachments/assets/1071afcb-74dd-4bdf-829e-f2580789c4cc" />
 
-## Proxmox LXC
-
-You can manage Proxmox LXC containers directly from the UI, allowing you to start and stop LXCs alongside Docker containers and groups.
-
-* The Proxmox node and API credentials must be correctly configured
-* Only LXC containers are supported (QEMU/VMs are not)
-* Permissions on the Proxmox API token must allow LXC power management
-
-You can configure the Proxmox API by accessing the Key icon in the navbar.
-I recommend creating a new user and granting it the minimal roles required - VM.Audit and VM.PowerMgmt, then create a new API token in Proxmox for this user.
-
-<img width="517" height="1059" alt="image" src="https://github.com/user-attachments/assets/c429a765-7388-491a-b3ae-258c70bc5938" />
 
 ## Web UI
 
@@ -160,16 +145,6 @@ PORT | Port of the reverse proxy
 UI_PORT | Port of the Web UI
 DOCKER_PROXY_URL | Address of the socket proxy, must start with tcp://
 
-## Contribute
-
-<a href="https://buymeacoffee.com/dragosul">
-  <img 
-    src="https://github.com/user-attachments/assets/b43734fe-aa49-4e1e-862e-83ec5ac65526"
-    width="300" 
-    height="180"
-    alt="image"
-  />
-</a>
 
 ## License
 

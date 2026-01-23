@@ -51,8 +51,11 @@ router.put("/:name", (req, res) => {
   const container = config.containers.find(c => c.name === req.params.name);
   if (!container) return res.status(404).json({ error: "Container not found" });
 
-  if (typeof active === "boolean") {
-    updates.activatedAt = active ? Date.now() : null;
+  // Handle active boolean conversion - accept both boolean and string values
+  if (active !== undefined) {
+    const isActive = typeof active === 'boolean' ? active : active === 'true' || active === true;
+    updates.active = isActive;
+    updates.activatedAt = isActive ? Date.now() : null;
   }
 
   Object.assign(container, updates);
@@ -128,6 +131,37 @@ router.post("/order", (req, res) => {
 
   saveConfig(config);
   res.json({ message: "Order saved", order: validOrder });
+});
+
+// Check if container is ready (responding with 200)
+router.get("/:name/ready", async (req, res) => {
+  const { containers } = readConfig();
+  const container = containers.find(c => c.name === req.params.name);
+  if (!container) return res.status(404).json({ ready: false });
+  
+  const isContainerRunning = req.app.locals.isContainerRunning;
+  if (!(await isContainerRunning(container.name))) {
+    return res.json({ ready: false });
+  }
+
+  if (!container.url) 
+       return res.json({ ready: false });
+  
+  // Verify container is actually responding with 200
+  try {
+    const response = await fetch(`${container.url}/`, { 
+      method: 'GET',
+      signal: AbortSignal.timeout(5000)
+    });
+    res.json({ ready: response.status === 200 });
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      console.log(`Timeout checking readiness for ${container.name}`);
+    } else {
+      console.log(`Error checking readiness for ${container.name}: ${e.message}`);
+    }
+    res.json({ ready: false });
+  }  
 });
 
 
