@@ -4,7 +4,7 @@ import path from "path";
 //----------------------------------------------------------------
 // Configuration
 //----------------------------------------------------------------
-export const CONFIG_PATH = "/app/config/config.json";
+export const CONFIG_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "config", "config.json");
 
 //----------------------------------------------------------------
 // Log function (imported from server)

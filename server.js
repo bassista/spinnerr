@@ -1,4 +1,6 @@
 import express from "express";
+import { fileURLToPath } from "url";
+import path from "path";
 import fs from "fs";
 import containerRoutes from "./routes/containerRoutes.js"; 
 import groupRoutes from "./routes/groupRoutes.js";
@@ -13,9 +15,9 @@ import { setupUIServer, setLogFunction as setUIServerLogFunction } from "./utils
 //----------------------------------------------------------------
 // Constants and Configuration
 //----------------------------------------------------------------
-const WAITING_PAGE = "/app/public/waiting.html";
 const PORT = process.env.PORT || 10000;
 const UI_PORT = process.env.UI_PORT || null;
+const WAITING_PAGE = path.join(path.dirname(fileURLToPath(import.meta.url)), "public", "waiting.html");
 let cachedWaitingPageContent = fs.readFileSync(WAITING_PAGE, 'utf8');
 
 //----------------------------------------------------------------
