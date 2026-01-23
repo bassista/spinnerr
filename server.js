@@ -8,7 +8,6 @@ import scheduleRoutes from "./routes/scheduleRoutes.js";
 import { setupConfigReload, cleanupRemovedContainers, setLogFunction, initializeAppState } from "./utils/configManager.js";
 import { initializeDockerMethod, isContainerRunning, startContainer, stopContainer, allContainers, setLogFunction as setDockerLogFunction } from "./utils/dockerManager.js";
 import { initializeScheduler, setLogFunction as setScheduleLogFunction } from "./utils/scheduleManager.js";
-import { setLogFunction as setRequestHandlerLogFunction } from "./utils/requestHandler.js";
 import { createProxyMiddleware, setLogFunction as setProxyMiddlewareLogFunction } from "./utils/proxyMiddleware.js";
 import { setupUIServer, setLogFunction as setUIServerLogFunction } from "./utils/uiServer.js";
 
@@ -32,7 +31,6 @@ function log(message) {
 setLogFunction(log);
 setDockerLogFunction(log);
 setScheduleLogFunction(log);
-setRequestHandlerLogFunction(log);
 setProxyMiddlewareLogFunction(log);
 setUIServerLogFunction(log);
 initializeDockerMethod();
