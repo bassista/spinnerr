@@ -17,7 +17,7 @@ import { setupUIServer, setLogFunction as setUIServerLogFunction } from "./utils
 const PORT = process.env.PORT || 10000;
 const UI_PORT = process.env.UI_PORT || null;
 const WAITING_PAGE = path.join(path.dirname(fileURLToPath(import.meta.url)), "public", "waiting.html");
-let cachedWaitingPageContent = fs.readFileSync(WAITING_PAGE, 'utf8');
+const cachedWaitingPageContent = fs.readFileSync(WAITING_PAGE, 'utf8');
 
 //----------------------------------------------------------------
 // Log function
@@ -33,7 +33,6 @@ setDockerLogFunction(log);
 setScheduleLogFunction(log);
 setProxyMiddlewareLogFunction(log);
 setUIServerLogFunction(log);
-initializeDockerMethod();
 
 //----------------------------------------------------------------
 // Initialize application state
@@ -45,6 +44,8 @@ const appState = initializeAppState(lastActivity);
 let containers = appState.containers;
 let groups = appState.groups;
 let schedules = appState.schedules;
+
+initializeDockerMethod();
 
 // Initialize scheduler with getters to always get current state
 initializeScheduler(
@@ -60,12 +61,10 @@ initializeScheduler(
 // Express Main App Setup
 //-----------------------------------------------------------------
 const app = express();
-
 // API Routes
 app.use("/api/containers", express.json(), containerRoutes);
 app.use("/api/groups", express.json(), groupRoutes);
 app.use("/api/schedules", express.json(), scheduleRoutes);
-
 // Expose control functions
 app.locals.startContainer = startContainer;
 app.locals.stopContainer = stopContainer;
@@ -89,7 +88,6 @@ setupUIServer(UI_PORT, isContainerRunning, startContainer, stopContainer, lastAc
 const unwatch = setupConfigReload((newConfig) => {
   // Set log function for configManager
   setLogFunction(log);
-  
   // Cleanup removed containers
   cleanupRemovedContainers(newConfig.containers, { lastActivity });
 
@@ -97,7 +95,6 @@ const unwatch = setupConfigReload((newConfig) => {
   containers = newConfig.containers;
   schedules = newConfig.schedules;
 });
-
 // Cleanup on process exit
 process.on('exit', unwatch);
 process.on('SIGINT', () => {
