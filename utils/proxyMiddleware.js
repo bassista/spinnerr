@@ -17,8 +17,6 @@ function log(message) {
 //----------------------------------------------------------------
 export function createProxyMiddleware(containers, groups, lastActivity, recentlyStarted, cachedWaitingPageContent, isContainerRunning, startContainer) {
   return async (req, res, next) => {
-    const { findContainerByRequest } = await import('./requestHandler.js');
-    const { pathNameFrom } = await import('./requestHandler.js');
  
     let group
     const container = findContainerByRequest(req, containers);
@@ -107,4 +105,29 @@ async function startContainersInGroup(group, containers, isContainerRunning, sta
         if (!(await isContainerRunning(name)))
             await startContainer(name);
     }
+}
+
+//----------------------------------------------------------------
+// Container Lookup
+//----------------------------------------------------------------
+function findContainerByRequest(req, containers) {
+  let firstPathSegment = pathNameFrom(req);
+  if (firstPathSegment) {
+      container = containers.find(c => c.path === firstPathSegment);
+      if (container) {
+          log(`<${container.name}> accessed via path prefix /${firstPathSegment}`);
+          return container;
+      }
+  }
+
+  log(`No container found for hostname: ${hostname}, path: ${req.path} - preferHeader: ${preferHeader}`);
+  return null;
+}
+
+function pathNameFrom(req) {
+  let pathSegments = req.path?.split('/').filter(Boolean);
+
+  if (pathSegments && pathSegments.length > 0) 
+      return pathSegments[0];
+  return null;
 }
