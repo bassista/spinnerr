@@ -113,7 +113,7 @@ async function startContainersInGroup(group, containers, isContainerRunning, sta
 function findContainerByRequest(req, containers) {
   let firstPathSegment = pathNameFrom(req);
   if (firstPathSegment) {
-      container = containers.find(c => c.path === firstPathSegment);
+      let container = containers.find(c => c.path === firstPathSegment);
       if (container) {
           log(`<${container.name}> accessed via path prefix /${firstPathSegment}`);
           return container;
