@@ -120,7 +120,7 @@ function findContainerByRequest(req, containers) {
       }
   }
 
-  log(`No container found for hostname: ${hostname}, path: ${req.path} - preferHeader: ${preferHeader}`);
+  log(`No container found for path: ${req.path}`);
   return null;
 }
 
