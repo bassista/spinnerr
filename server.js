@@ -73,7 +73,7 @@ app.locals.lastActivity = lastActivity;
 
 app.use(createProxyMiddleware(containers, groups, lastActivity, recentlyStarted, cachedWaitingPageContent, isContainerRunning, startContainer));
 
-const server = app.listen(PORT, () => {
+app.listen(PORT, () => {
   log(`Spinnerr Proxy running on port ${PORT}`);
 });
 

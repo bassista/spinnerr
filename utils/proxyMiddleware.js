@@ -30,10 +30,10 @@ export function createProxyMiddleware(containers, groups, lastActivity, recently
                 log(`Group <${group.name}> found`);
                 const containerNames = Array.isArray(group.container) ? group.container : [group.container];
                 
-                // Find first active container with host and path configured
+                // Find first active container with url configured
                 for (const name of containerNames) {
                     const c = containers.find(c => c.name === name);
-                    if (c?.active && c?.host && c?.path) {
+                    if (c?.active && c?.url) {
                         container = c;
                         log(`Selected container <${c.name}> from group <${group.name}>`);
                         break;
@@ -52,7 +52,7 @@ export function createProxyMiddleware(containers, groups, lastActivity, recently
       return res.status(404).send("Container not found");
     }
 
-    if (!container.path || !container.host) {
+    if (!container.url) {
         log(`<${container.name}> missing path or host configuration`);
         return res.status(500).send("Container misconfigured");
     }
@@ -63,7 +63,7 @@ export function createProxyMiddleware(containers, groups, lastActivity, recently
     log(`<${container.name}> accessed`);
     lastActivity[container.name] = Date.now();
 
-    let redirectUrl = `https://${container.path}.${container.host}`;
+    let redirectUrl = `${container.url}`;
     const waitingPageContent = cachedWaitingPageContent
                                  .replace('{{REDIRECT_URL}}', redirectUrl)
                                  .replace('{{CONTAINER_NAME}}', container.name);
@@ -113,14 +113,14 @@ async function startContainersInGroup(group, containers, isContainerRunning, sta
 function findContainerByRequest(req, containers) {
   let firstPathSegment = pathNameFrom(req);
   if (firstPathSegment) {
-      let container = containers.find(c => c.path === firstPathSegment);
+      let container = containers.find(c => c.friendly_name === firstPathSegment);
       if (container) {
-          log(`<${container.name}> accessed via path prefix /${firstPathSegment}`);
+          log(`<${container.name}> found with friendly name ${firstPathSegment}`);
           return container;
       }
   }
 
-  log(`No container found for path: ${req.path}`);
+  log(`No container found for path: ${firstPathSegment}`);
   return null;
 }
 
