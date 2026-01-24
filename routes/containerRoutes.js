@@ -149,6 +149,11 @@ router.get("/:name/ready", async (req, res) => {
       return res.status(500).json({ ready: false });
 
   let containerUrl = container.url
+  if(containerUrl.contains('http://') || containerUrl.contains('https://')) 
+    containerUrl = container.url;
+  else 
+    containerUrl = `http://${container.url}`;
+  
   console.log(`Checking readiness for ${container.name} at ${containerUrl}`);
 
   // Verify container is actually responding with 200
