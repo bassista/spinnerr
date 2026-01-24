@@ -148,13 +148,14 @@ router.get("/:name/ready", async (req, res) => {
   if (!container.url) 
       return res.status(500).json({ ready: false });
 
-  console.log(`Checking readiness for ${container.name} at ${container.url}`);
-  
+  let containerUrl = container.url
+  console.log(`Checking readiness for ${container.name} at ${containerUrl}`);
+
   // Verify container is actually responding with 200
   try {
-    const response = await fetch(`${container.url}/`, { 
+    const response = await fetch(`${containerUrl}/`, { 
       method: 'GET',
-      signal: AbortSignal.timeout(5000)
+      signal: AbortSignal.timeout(1000)
     });
     res.json({ ready: response.status === 200 });
   } catch (e) {

@@ -74,7 +74,7 @@
   const REDIRECT_URL = '{{REDIRECT_URL}}';
   const CONTAINER_NAME = '{{CONTAINER_NAME}}';
   const MAX_WAIT_TIME = 5 * 60 * 1000; // 5 minutes
-  const CHECK_INTERVAL = 2000; // Check every 2 seconds
+  const CHECK_INTERVAL = 3000; // Check every 4 seconds
   
   const startTime = Date.now();
   const errorElement = document.createElement('div');
@@ -85,7 +85,7 @@
     
     // Check if max wait time exceeded
     if (elapsed > MAX_WAIT_TIME) {
-      errorElement.textContent = 'Container failed to start after 5 minutes. Please try again.';
+      errorElement.textContent = `Container failed to start after ${MAX_WAIT_TIME / 1000} seconds. Please try again.`;
       document.body.appendChild(errorElement);
       return;
     }
