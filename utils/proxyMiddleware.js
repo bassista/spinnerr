@@ -19,7 +19,7 @@ export function createProxyMiddleware(containers, groups, lastActivity, recently
   return async (req, res, next) => {
  
     let group
-    const container = findContainerByRequest(req, containers);
+    let container = findContainerByRequest(req, containers);
     if (!container) {
         const pathName = pathNameFrom(req);
         if (pathName) {
