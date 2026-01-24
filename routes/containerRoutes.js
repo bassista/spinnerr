@@ -149,7 +149,7 @@ router.get("/:name/ready", async (req, res) => {
       return res.status(500).json({ ready: false });
 
   let containerUrl = container.url
-  if(containerUrl.contains('http://') || containerUrl.contains('https://')) 
+  if(containerUrl.includes('http://') || containerUrl.includes('https://')) 
     containerUrl = container.url;
   else 
     containerUrl = `http://${container.url}`;
