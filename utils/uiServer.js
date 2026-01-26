@@ -21,8 +21,8 @@ function log(message) {
 //----------------------------------------------------------------
 export function setupUIServer(UI_PORT, isContainerRunning, startContainer, stopContainer, lastActivity, allContainers) {
   if (!UI_PORT) {
-    log("WebUI disabled (UI_PORT not set)");    
-    return;
+      log("WebUI disabled (UI_PORT not set)");    
+      return;
   }
 
   const ui = express();
@@ -41,4 +41,5 @@ export function setupUIServer(UI_PORT, isContainerRunning, startContainer, stopC
   ui.listen(UI_PORT, () => {
     log(`WebUI running on port ${UI_PORT}`);
   });
+
 }

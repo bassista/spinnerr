@@ -1,4 +1,3 @@
-
 //----------------------------------------------------------------
 // Log function (imported from server)
 //----------------------------------------------------------------
@@ -29,40 +28,54 @@ export function initializeScheduler(getSchedules, getContainers, getGroups, star
         ? containers.find(c => c.name === s.target)
         : groups.find(g => g.name === s.target);
 
-      if (!target?.active || !s.timers?.length) continue;
+      if (!target?.active || !s.timers?.length) 
+          continue;
 
       for (const timer of s.timers) {
-        if (!timer.active || !timer.days.includes(day)) continue;
+        if (!timer.active || !timer.days.includes(day)) 
+            continue;
 
-        if (timer.startTime === time) {
-          if (s.targetType === "container") {
-            await startContainer(s.target);
-          } else {
-            const containerNames = Array.isArray(target.container) ? target.container : [target.container];
-            for (const name of containerNames) {
-              await startContainer(name);
-            }
-          }
-          log(`<${s.target}> scheduled start executed`);
-        }
+        await handleStart(timer, time, s, startContainer, target);
 
-        if (timer.stopTime === time) {
-          const containerNames = s.targetType === "container" 
-            ? [s.target]
-            : (Array.isArray(target.container) ? target.container : [target.container]);
-          
-          for (const name of containerNames) {
-            if (!stoppingContainers.has(name)) {
-              stoppingContainers.add(name);
-              await stopContainer(name);
-              stoppingContainers.delete(name);
-              log(`<${name}> scheduled stop executed`);
-            } else {
-              log(`<${name}> is already stopping, skipping scheduled stop`);
-            }
-          }
-        }
+        await handleStop(timer, time, s, target, stoppingContainers, stopContainer);
       }
     }
   }, 59000);
 }
+
+async function handleStart(timer, time, s, startContainer, target) {
+  if (timer.startTime !== time) 
+      return;
+
+  if (s.targetType === "container")
+    await startContainer(s.target);
+  else {
+    const containerNames = Array.isArray(target.container) ? target.container : [target.container];
+    for (const name of containerNames)
+      await startContainer(name);
+  }
+  log(`<${s.target}> scheduled start executed`);
+
+}
+
+async function handleStop(timer, time, s, target, stoppingContainers, stopContainer) {
+  if (timer.stopTime !== time) 
+      return;
+
+  const containerNames = s.targetType === "container"
+    ? [s.target]
+    : (Array.isArray(target.container) ? target.container : [target.container]);
+
+  for (const name of containerNames) {
+    if (!stoppingContainers.has(name))
+      log(`<${name}> is already stopping, skipping scheduled stop`);
+    else {
+      stoppingContainers.add(name);
+      await stopContainer(name);
+      stoppingContainers.delete(name);
+      log(`<${name}> scheduled stop executed`);
+    }
+  }
+
+}
+

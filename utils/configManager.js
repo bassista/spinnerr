@@ -41,11 +41,10 @@ export function initializeAppState(lastActivity) {
   
   // Initialize lastActivity for each container
   if (config.containers) {
-    for (const container of config.containers) {
-      if (!(container.name in lastActivity)) {
-        lastActivity[container.name] = null;
+      for (const container of config.containers) {
+        if (!(container.name in lastActivity)) 
+            lastActivity[container.name] = null;     
       }
-    }
   }
 
   return {
@@ -62,8 +61,8 @@ export function setupConfigReload(onConfigReload) {
   const watcher = fs.watchFile(CONFIG_PATH, () => {
     const newConfig = loadConfig();
     if (newConfig.containers && newConfig.groups && newConfig.schedules) {
-      log("Configuration reloaded");
-      onConfigReload(newConfig);
+        log("Configuration reloaded");
+        onConfigReload(newConfig);
     }
   });
 
@@ -79,11 +78,12 @@ export function cleanupRemovedContainers(newContainers, { lastActivity }) {
   const newNames = new Set(newContainers.map(c => c.name));
   
   for (const name in lastActivity) {
-    if (!newNames.has(name)) {
-      delete lastActivity[name];
-      log(`Cleaned up lastActivity for removed container: ${name}`);
-    }
+       if (!newNames.has(name)) {
+           delete lastActivity[name];
+           log(`Cleaned up lastActivity for removed container: ${name}`);
+       }
   }
+  
 }
 
 //----------------------------------------------------------------
@@ -120,6 +120,5 @@ export function saveConfig(config) {
     apiKeys: config.apiKeys || []
   };
 
-  fs.writeFileSync(CONFIG_PATH + '.tmp', JSON.stringify(toSave, null, 2));
-  fs.renameSync(CONFIG_PATH + '.tmp', CONFIG_PATH);
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(toSave, null, 2));
 }

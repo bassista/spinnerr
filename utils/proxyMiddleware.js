@@ -1,4 +1,3 @@
-
 //----------------------------------------------------------------
 // Log function (imported from server)
 //----------------------------------------------------------------
@@ -32,24 +31,23 @@ export function createProxyMiddleware(containers, groups, lastActivity, recently
                 
                 // Find first active container with url configured
                 for (const name of containerNames) {
-                    const c = containers.find(c => c.name === name);
-                    if (c?.active && c?.url) {
-                        container = c;
-                        log(`Selected container <${c.name}> from group <${group.name}>`);
-                        break;
-                    }
+                     const c = containers.find(c => c.name === name);
+                     if (c?.active && c?.url) {
+                         container = c;
+                         log(`Selected container <${c.name}> from group <${group.name}>`);
+                         break;
+                     }
                 }
                 
-                if (!container) {
-                    log(`No valid container found in group <${group.name}>`);
-                }
+                if (!container) 
+                    log(`No valid container found in group <${group.name}>`);                
             }    
         }
     }
 
     if (!container) {
-      log(`No container matched for request: ${req.hostname || req.headers.host}${req.path}`);
-      return res.status(404).send("Container not found");
+        log(`No container matched for request: ${req.hostname || req.headers.host}${req.path}`);
+        return res.status(404).send("Container not found");
     }
 
     if (!container.url) {
@@ -77,13 +75,13 @@ export function createProxyMiddleware(containers, groups, lastActivity, recently
 
     // If container is running, send waiting page
     if (await isContainerRunning(container.name)) {
-      log(`<${container.name}> is running, send waiting page for container at ${redirectUrl}`);
-      return;    
+       log(`<${container.name}> is running, send waiting page for container at ${redirectUrl}`);
+       return;    
     }
 
     if (recentlyStarted.has(container.name)) {
-      log(`<${container.name}> was started recently, not starting again`);
-      return;
+       log(`<${container.name}> was started recently, not starting again`);
+       return;
     }
 
     let timeoutId = setTimeout(() => recentlyStarted.delete(container.name), 30000);
@@ -97,13 +95,13 @@ async function startContainersInGroup(group, containers, isContainerRunning, sta
     const names = Array.isArray(group.container) ? group.container : [group.container];
     log(`starting group <${group.name}>`);
     for (const name of names) {
-        const containerInGroup = containers.find(c => c.name === name);
-        if (!containerInGroup?.active) {
-            log(`<${name}> in group <${group.name}> is not active, skipping`);
-            continue;
-        }
-        if (!(await isContainerRunning(name)))
-            await startContainer(name);
+         const containerInGroup = containers.find(c => c.name === name);
+         if (!containerInGroup?.active) {
+             log(`<${name}> in group <${group.name}> is not active, skipping`);
+             continue;
+         }
+         if (!(await isContainerRunning(name)))
+             await startContainer(name);
     }
 }
 
@@ -120,7 +118,7 @@ function findContainerByRequest(req, containers) {
       }
   }
 
-  log(`No container found for path: ${firstPathSegment}`);
+  log(`No container found for path: ${firstPathSegment}`);  
   return null;
 }
 
@@ -129,5 +127,6 @@ function pathNameFrom(req) {
 
   if (pathSegments && pathSegments.length > 0) 
       return pathSegments[0];
+
   return null;
 }
