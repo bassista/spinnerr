@@ -14,8 +14,10 @@ function log(message) {
 //----------------------------------------------------------------
 // Proxy Middleware
 //----------------------------------------------------------------
-export function createProxyMiddleware(containers, groups, lastActivity, recentlyStarted, cachedWaitingPageContent, isContainerRunning, startContainer) {
+export function createProxyMiddleware(getContainers, getGroups, lastActivity, recentlyStarted, cachedWaitingPageContent, isContainerRunning, startContainer) {
   return async (req, res, next) => {
+    const containers = getContainers();
+    const groups = getGroups();
  
     let group
     let container = findContainerByRequest(req, containers);
